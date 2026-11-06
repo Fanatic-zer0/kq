@@ -1,9 +1,6 @@
 # kq
 
-`kq` is a Personal kubectl for people who want answers without a chain of `kubectl` commands. 
-
-Run `kq <kind>` to list resources or `kq <kind> <name>` to see a resource and its relationships in one view: owners, Pods using a PVC, Services, Ingresses, configuration references, RBAC, and more. 
-Events and warnings are available with `--events`; Secret values are never shown. `kq` helps you find and explore resources—it does not perform health checks or remediation.
+`kq` is a query-only personal kubectl for people who want answers without a chain of `kubectl` commands. Run `kq <kind>` to list resources or `kq <kind> <name>` to see a resource and its relationships in one view: owners, Pods using a PVC, Services, Ingresses, configuration references, RBAC, and more. Custom resources can be selected by Kind or `plural.group`. Events and warnings are available with `--events`; Secret values are never shown. `kq` helps you find and explore resources—it does not perform health checks or remediation.
 
 ## What it does not do
 
@@ -47,7 +44,7 @@ kq po -A                                     # alias + all-namespaces list
 
 ## Supported resources
 
-`pod` (`po`), `deployment` (`deploy`), `replicaset` (`rs`), `statefulset` (`sts`), `daemonset` (`ds`), `job`, `cronjob`, `service` (`svc`), `ingress` (`ing`), `pvc`, `pv`, `configmap` (`cm`), `secret`, `serviceaccount` (`sa`), `node`, `namespace`, `crd`, `event`, and `resource <plural.group> [name]` for any other built-in or custom resource discovered through the Kubernetes API.
+`pod` (`po`), `deployment` (`deploy`), `replicaset` (`rs`), `statefulset` (`sts`), `daemonset` (`ds`), `job`, `cronjob`, `service` (`svc`), `ingress` (`ing`), `pvc`, `pv`, `configmap` (`cm`), `secret`, `serviceaccount` (`sa`), `node`, `namespace`, `crd`, `event`, and `resource <plural.group|Kind> [name]` for any other built-in or custom resource discovered through the Kubernetes API. A uniquely discovered custom Kind can also be run directly, for example `kq Widget [name]`.
 
 ## Flags
 
