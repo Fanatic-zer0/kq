@@ -1,12 +1,26 @@
 # kq
 
-`kq` is a query-only personal kubectl for people who want answers without a chain of `kubectl` commands. Run `kq <kind>` to list resources or `kq <kind> <name>` to see a resource and its relationships in one view: owners, Pods using a PVC, Services, Ingresses, configuration references, RBAC, and more. Custom resources can be selected by Kind or `plural.group`. Events and warnings are available with `--events`; Secret values are never shown. `kq` helps you find and explore resources—it does not perform health checks or remediation.
+`kq` is a query-only personal kubectl for people who want answers without a chain of `kubectl` commands. 
+
+Run `kq <kind>` to list resources or `kq <kind> <name>` to see a resource and its relationships in one view: owners, Pods using a PVC, Services, Ingresses, configuration references, RBAC, and more. 
+Custom resources can be selected by Kind or `plural.group`. 
+Events and warnings are available with `--events`; 
+`kq` helps you find and explore resources—it does not perform health checks or remediation.
 
 ## What it does not do
 
 - No health status, severity scoring, or "most likely cause" output.
 - No create/update/delete/patch/exec/port-forward — every Kubernetes request is a GET or LIST.
 - Never prints Secret values. Secret key names are shown only with `--show-secret-keys`.
+
+
+### Listing
+<img width="1205" height="200" alt="image" src="https://github.com/user-attachments/assets/b9013cff-7bf5-480e-932d-40d8cbb66be7" />
+
+
+### Resource Detailed View
+<img width="1205" height="501" alt="image" src="https://github.com/user-attachments/assets/56d19aa6-80fa-40f2-8d97-daf33aeb92ce" />
+
 
 ## Build
 
