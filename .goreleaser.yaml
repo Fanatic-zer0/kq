@@ -1,0 +1,51 @@
+version: 2
+
+project_name: kq
+
+builds:
+  - id: kq
+    main: ./cmd/kq
+    binary: kq
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    env:
+      - CGO_ENABLED=0
+  - id: kubectl-kq
+    main: ./cmd/kq
+    binary: kubectl-kq
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    env:
+      - CGO_ENABLED=0
+
+archives:
+  - id: kq
+    ids: [kq]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+  - id: kubectl-kq
+    ids: [kubectl-kq]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "kubectl-kq_{{ .Os }}_{{ .Arch }}"
