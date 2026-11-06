@@ -45,7 +45,6 @@ func ListGeneric(ctx context.Context, client k8s.Reader, request ListRequest) (*
 		if request.Kind == "PersistentVolumeClaim" || request.Kind == "PersistentVolume" {
 			usedBy := "unavailable"
 			if podUsersErr == nil {
-				usedBy = "-"
 				claimNamespace, claimName := node.Ref.Namespace, node.Ref.Name
 				if details, ok := detailsOf[*model.PVDetails](node); ok && details != nil {
 					claimNamespace, claimName = details.ClaimNamespace, details.ClaimName

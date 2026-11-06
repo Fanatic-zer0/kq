@@ -32,8 +32,8 @@ func renderDeploymentDetail(w io.Writer, result *model.QueryResult, target model
 		table.Flush(w)
 	}
 
-	replicaSets := edgeTargets(result.Graph, target.Ref.UID, model.RelationOwner)
-	if replicaSets = reverseOwnerLookup(result.Graph, target.Ref.UID, "ReplicaSet"); len(replicaSets) > 0 {
+	replicaSets := reverseOwnerLookup(result.Graph, target.Ref.UID, "ReplicaSet")
+	if len(replicaSets) > 0 {
 		section(w, "REPLICASETS")
 		table := NewTable("NAME", "DESIRED", "READY", "AGE", "STATUS")
 		for _, rs := range replicaSets {

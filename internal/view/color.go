@@ -13,7 +13,6 @@ const (
 	ansiGreen  = "\x1b[32m"
 	ansiYellow = "\x1b[33m"
 	ansiCyan   = "\x1b[36m"
-	ansiGray   = "\x1b[90m"
 )
 
 // colorEnabled is set once per process invocation before any rendering occurs;
@@ -43,7 +42,6 @@ func colorize(code, text string) string {
 }
 
 func bold(text string) string   { return colorize(ansiBold, text) }
-func gray(text string) string   { return colorize(ansiGray, text) }
 func red(text string) string    { return colorize(ansiRed, text) }
 func green(text string) string  { return colorize(ansiGreen, text) }
 func yellow(text string) string { return colorize(ansiYellow, text) }

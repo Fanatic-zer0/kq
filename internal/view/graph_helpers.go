@@ -49,16 +49,6 @@ func toLower(value string) string {
 	return string(result)
 }
 
-func nodesOfKind(graph model.Graph, kind string) []model.ResourceNode {
-	var matches []model.ResourceNode
-	for _, node := range graph.Nodes {
-		if node.Ref.Kind == kind {
-			matches = append(matches, node)
-		}
-	}
-	return matches
-}
-
 func nodeByUID(graph model.Graph, uid string) (model.ResourceNode, bool) {
 	for _, node := range graph.Nodes {
 		if node.Ref.UID == uid {

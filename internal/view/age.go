@@ -45,13 +45,3 @@ func orDash(value string) string {
 	}
 	return value
 }
-
-func boolOrDash(value *bool) string {
-	if value == nil {
-		return "-"
-	}
-	if *value {
-		return "true"
-	}
-	return "false"
-}
