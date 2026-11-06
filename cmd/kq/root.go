@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/Fanatic-zer0/kq/internal/k8s"
 	"github.com/Fanatic-zer0/kq/internal/query"
 	"github.com/Fanatic-zer0/kq/internal/view"
+	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
