@@ -18,6 +18,7 @@ import (
 type ListRequest struct {
 	Resource      schema.GroupVersionResource
 	Kind          string
+	CRDGroup      string
 	Namespace     string
 	AllNamespaces bool
 	Wide          bool

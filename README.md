@@ -82,10 +82,15 @@ make plugin  # build ./kubectl-kq for use as `kubectl kq ...`
 
 ## Roadmap
 
-- Search resources across namespaces by kind, name, and labels, then open a result with its relationships in one step.
-- Schema-aware CRD and custom-resource summaries, with readable field names and types instead of generic field output.
-- Reusable user-defined views that collect selected resource kinds and relationships into one command.
-- Optional live refresh for resource lists and detail views, while keeping Kubernetes access read-only.
-- RBAC-aware effective-permissions summaries for ServiceAccounts; current output shows Role and ClusterRole rules without resolving the final permissions.
-- Krew and Homebrew distribution. Manifests are included in [.krew.yaml](.krew.yaml) and [Formula/kq.rb](Formula/kq.rb), but are not yet published.
+These are planned ideas, not current features. All are intended to preserve read-only Kubernetes access.
+
+- **Resource search:** Find resources by name across kinds and namespaces, then inspect a result and its relationships without manually identifying its kind first.
+- **Visible partial results:** Clearly indicate when permissions, timeouts, or API failures prevent a relationship lookup, without requiring `--events`. Distinguish an empty result from an incomplete one.
+- **Custom-resource relationships:** Connect custom resources to their CRD and owners, and show referenced objects where they can be reliably identified. Add schema-aware summaries with readable field names and types.
+- **List filters:** Narrow resource lists by label selector, name pattern, or status to make large namespaces easier to scan.
+- **Resource comparison:** Compare selected resource details across namespaces or Kubernetes contexts, such as a Deployment in staging and production.
+- **Live refresh:** Optionally refresh resource lists and detail views at a configurable interval using read-only requests.
+- **Reusable views:** Let users define views that collect selected resource kinds and relationships into one command for repeated workflows.
+- **Effective RBAC permissions:** Summarize permissions for ServiceAccounts. Current output shows Role and ClusterRole rules without resolving the final permissions.
+- **Distribution:** Publish through Krew and Homebrew. Starting manifests are included in [.krew.yaml](.krew.yaml) and [Formula/kq.rb](Formula/kq.rb), but are not yet published.
 
