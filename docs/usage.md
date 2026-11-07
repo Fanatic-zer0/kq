@@ -39,6 +39,8 @@ Built-in resource names and aliases are available directly. A discovered custom 
 
 `kq crd` lists the installed API definitions with group, kind, scope, versions, establishment status, and age. `kq crd <name>` shows the same catalog details plus CRD conditions. To list or inspect custom-resource instances, use `kq resource <plural.group> [name]`, or use the CRD Kind when it resolves uniquely, for example `kq resource widgets.example.io sample -n default` or `kq resource Widget`. If a Kind is registered by multiple API resources, specify `plural.group`. CRD queries do not automatically list instances.
 
+`kq crd <api-group>`, for example `kq crd kafka.strimzi.io`, lists CRDs whose API group exactly matches. An exact CRD name takes precedence and displays its details. Group lookup requires permission to list CRDs; an unknown name or group returns a not-found error.
+
 Custom-resource detail output includes metadata plus bounded top-level `config`, `spec`, and `status` fields rendered as nested YAML. Sensitive-looking fields are redacted, nesting and value lengths are capped, and output is limited to 100 fields. JSON/YAML detail output includes these sanitized fields in the resource projection.
 
 PV and PVC list views include a `USED BY` column. PVC usage is matched by namespace and claim name; PV usage is resolved through its bound PVC. Detail views show the bound PV/PVC and consuming Pods. These relationships come from Pod volume specs, so `USED BY` means a Pod declares the claim; it does not prove that the Pod successfully mounted the volume. PV usage needs permission to list Pods across namespaces. If access is denied, the list displays `unavailable` and table output includes a warning.

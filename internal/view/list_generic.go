@@ -41,6 +41,12 @@ func ListGeneric(ctx context.Context, client k8s.Reader, request ListRequest) (*
 	}
 	for i := range items {
 		node := query.Project(&items[i], request.Kind, request.Resource.GroupVersion().String(), false)
+		if request.CRDGroup != "" {
+			details, ok := detailsOf[*model.CRDDetails](node)
+			if !ok || details == nil || details.Group != request.CRDGroup {
+				continue
+			}
+		}
 		columns := columnFunc(node)
 		if request.Kind == "PersistentVolumeClaim" || request.Kind == "PersistentVolume" {
 			usedBy := "unavailable"
