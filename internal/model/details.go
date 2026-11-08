@@ -268,6 +268,7 @@ type CustomResourceField struct {
 }
 
 type CustomResourceDetails struct {
+	SchemaFields      []CustomSchemaField   `json:"schemaFields,omitempty"`
 	APIVersion        string                `json:"apiVersion,omitempty"`
 	CreationTimestamp time.Time             `json:"creationTimestamp,omitempty"`
 	Labels            map[string]string     `json:"labels,omitempty"`
@@ -277,4 +278,10 @@ type CustomResourceDetails struct {
 	Status            any                   `json:"status,omitempty"`
 	Fields            []CustomResourceField `json:"-"`
 	FieldsTruncated   bool                  `json:"fieldsTruncated,omitempty"`
+}
+
+type CustomSchemaField struct {
+	Path        string `json:"path"`
+	Type        string `json:"type,omitempty"`
+	Description string `json:"description,omitempty"`
 }

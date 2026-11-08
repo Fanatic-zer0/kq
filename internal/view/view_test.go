@@ -147,7 +147,8 @@ func TestCustomResourceListAndDetailShowSpecAndStatus(t *testing.T) {
 	resource := model.ResourceNode{
 		Ref: model.ResourceRef{APIVersion: "example.io/v1", Kind: "Widget", Namespace: "payments", Name: "sample", UID: "widget-uid"},
 		Details: &model.CustomResourceDetails{
-			APIVersion: "example.io/v1", CreationTimestamp: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+			SchemaFields: []model.CustomSchemaField{{Path: "spec.replicas", Type: "integer", Description: "Desired replica count"}},
+			APIVersion:   "example.io/v1", CreationTimestamp: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 			Labels: map[string]string{"app": "sample"}, Annotations: map[string]string{"example.io/team": "payments"},
 			Config: map[string]any{"endpoint": "https://api.example.test"},
 			Spec:   map[string]any{"replicas": int64(3), "image": "example/widget:v1"},
@@ -174,6 +175,11 @@ func TestCustomResourceListAndDetailShowSpecAndStatus(t *testing.T) {
 	var detail bytes.Buffer
 	if err := RenderDetailText(&detail, result, DetailOptions{}); err != nil {
 		t.Fatalf("RenderDetailText: %v", err)
+	}
+	for _, expected := range []string{"SCHEMA", "spec.replicas", "integer", "Desired replica count"} {
+		if !strings.Contains(detail.String(), expected) {
+			t.Errorf("schema missing %q: %s", expected, detail.String())
+		}
 	}
 	for _, expected := range []string{"WIDGET: sample", "Namespace: payments", "API Version: example.io/v1", "LABELS", "app", "sample", "ANNOTATIONS", "example.io/team", "CONFIG / SPEC / STATUS", "config:", "endpoint: https://api.example.test", "spec:", "replicas: 3", "image: example/widget:v1", "status:", "ready: true"} {
 		if !strings.Contains(detail.String(), expected) {

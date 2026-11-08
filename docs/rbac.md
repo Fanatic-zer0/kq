@@ -44,6 +44,8 @@ rules:
 
 Bind this ClusterRole to a dedicated ServiceAccount or user using a `ClusterRoleBinding`. To query custom resources, add `get` and `list` rules for the specific custom-resource API groups and plural resource names; avoid wildcard permissions where possible.
 
+Default custom-resource detail enrichment also needs `get` access to the corresponding CRD and explicitly referenced objects. Missing access produces a visible partial-result warning without `--events`. Secret references do not require Secret GET access unless `--show-secret-keys` is enabled. Use `--exclude CustomResourceDefinition` to skip schema/definition lookup or `--depth 0` to skip relationship enrichment.
+
 PVC/PV `USED BY` results require `list` access to Pods. A namespaced PVC query/list needs Pod access in that namespace; `pvc -A` and PV queries/lists inspect Pods across namespaces. Without access, the resource still loads, but consumer lookup is unavailable: list tables show `unavailable` and a warning, while detail resolver warnings are displayed with `--events`. Do not treat an empty detail consumer list as definitive when Pod-list access is restricted. The ClusterRole above grants cluster-wide Pod list access; a namespace-scoped Role can be used for PVC-only workflows.
 
 ## Optional Secret key-name access

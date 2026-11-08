@@ -585,6 +585,14 @@ func renderGenericDetail(w io.Writer, result *model.QueryResult, target model.Re
 		if details.FieldsTruncated {
 			field(w, "Fields", "truncated at the 100-field limit")
 		}
+		if len(details.SchemaFields) > 0 {
+			section(w, "SCHEMA")
+			table := NewTable("FIELD", "TYPE", "DESCRIPTION")
+			for _, item := range details.SchemaFields {
+				table.Row(item.Path, orDash(item.Type), orDash(item.Description))
+			}
+			table.Flush(w)
+		}
 	}
 
 	chain := ownerChain(result.Graph, target)
@@ -603,7 +611,11 @@ func renderGenericDetail(w io.Writer, result *model.QueryResult, target model.Re
 	if len(related) > 0 {
 		section(w, "RELATED RESOURCES")
 		for _, node := range related {
-			fmt.Fprintf(w, "- %s/%s\n", node.Ref.Kind, node.Ref.Name)
+			name := node.Ref.Name
+			if node.Ref.Namespace != "" {
+				name = node.Ref.Namespace + "/" + name
+			}
+			fmt.Fprintf(w, "- %s/%s\n", node.Ref.Kind, name)
 		}
 	}
 	return nil
