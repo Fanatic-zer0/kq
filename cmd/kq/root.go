@@ -8,9 +8,11 @@ import (
 	"time"
 
 	"github.com/Fanatic-zer0/kq/internal/k8s"
+	"github.com/Fanatic-zer0/kq/internal/model"
 	"github.com/Fanatic-zer0/kq/internal/query"
 	"github.com/Fanatic-zer0/kq/internal/view"
 	"github.com/spf13/cobra"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
@@ -226,10 +228,27 @@ func runDetail(command *cobra.Command, options *flags, kind resourceKind, name s
 	if err != nil {
 		return err
 	}
-	return executeDetail(command, options, client, ctx, kind.resource, kind.kind, namespace, name)
+	return executeCRDDetailOrGroup(command, options, client, ctx, kind, namespace, name)
 }
 
-func executeDetail(command *cobra.Command, options *flags, client *k8s.Client, ctx context.Context, resource schema.GroupVersionResource, kind, namespace, name string) error {
+func executeCRDDetailOrGroup(command *cobra.Command, options *flags, client k8s.Reader, ctx context.Context, kind resourceKind, namespace, name string) error {
+	err := executeDetail(command, options, client, ctx, kind.resource, kind.kind, namespace, name)
+	if kind.kind != "CustomResourceDefinition" || !apierrors.IsNotFound(err) {
+		return err
+	}
+	result, listErr := view.ListGeneric(ctx, client, view.ListRequest{
+		Resource: kind.resource, Kind: kind.kind, CRDGroup: name,
+	})
+	if listErr != nil {
+		return listErr
+	}
+	if len(result.Rows) == 0 {
+		return err
+	}
+	return view.RenderList(command.OutOrStdout(), result, options.output, options.output == "wide")
+}
+
+func executeDetail(command *cobra.Command, options *flags, client k8s.Reader, ctx context.Context, resource schema.GroupVersionResource, kind, namespace, name string) error {
 	excluded := make(map[string]bool, len(options.exclude))
 	for _, excludedKind := range options.exclude {
 		excluded[strings.ToLower(excludedKind)] = true
@@ -245,7 +264,20 @@ func executeDetail(command *cobra.Command, options *flags, client *k8s.Client, c
 		return err
 	}
 	if !options.events || options.noEvents {
-		result.Warnings = nil
+		customTarget := false
+		for _, node := range result.Graph.Nodes {
+			if node.Ref.UID == result.Target.UID && resource.Group != "" {
+				_, customTarget = node.Details.(*model.CustomResourceDetails)
+				break
+			}
+		}
+		warnings := result.Warnings[:0]
+		for _, warning := range result.Warnings {
+			if customTarget || strings.HasPrefix(warning.Operation, "custom resource ") {
+				warnings = append(warnings, warning)
+			}
+		}
+		result.Warnings = warnings
 	}
 	format := options.output
 	if options.tree {
@@ -253,7 +285,7 @@ func executeDetail(command *cobra.Command, options *flags, client *k8s.Client, c
 	} else if format == "wide" {
 		format = "table"
 	}
-	return view.RenderDetail(command.OutOrStdout(), result, format, view.DetailOptions{Since: options.since, ShowWarnings: options.events && !options.noEvents})
+	return view.RenderDetail(command.OutOrStdout(), result, format, view.DetailOptions{Since: options.since, ShowWarnings: len(result.Warnings) > 0 || options.events && !options.noEvents})
 }
 
 func runEventList(command *cobra.Command, options *flags) error {
