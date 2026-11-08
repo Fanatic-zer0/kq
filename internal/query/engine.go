@@ -88,6 +88,11 @@ func (e *Engine) Run(ctx context.Context, request Request) (*model.QueryResult, 
 	builder := graph.New(targetNode.Ref)
 	builder.AddNode(targetNode)
 	result := &model.QueryResult{GeneratedAt: time.Now().UTC(), Target: targetNode.Ref}
+	if request.Depth > 0 && request.Resource.Group != "" {
+		if details, ok := targetNode.Details.(*model.CustomResourceDetails); ok {
+			result.Warnings = append(result.Warnings, e.resolveCustomTarget(ctx, targetObject, details, builder, request)...)
+		}
+	}
 
 	var depthsMu sync.Mutex
 	depths := map[string]int{targetNode.Ref.UID: 0}

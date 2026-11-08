@@ -27,6 +27,10 @@ The Kubernetes client exposes only `Get`, `List`, and contextual API discovery. 
 
 For a named target, the query engine fetches the object, traverses owner references by UID both upward and downward, and runs per-kind resolvers (ConfigMap/Secret/PVC/PV/ServiceAccount/RBAC/Service/Ingress/NetworkPolicy/PDB/HPA/Node) bounded by `--depth`. Pod queries create Pod→PVC→PV edges. Direct PVC queries reverse-list namespace Pods and match `spec.volumes[].persistentVolumeClaim.claimName`; direct PV queries fetch the bound PVC and find its consuming Pods. Results form a `model.Graph` of typed nodes and relationship edges; `internal/view` renders the graph. Optional lookup failures become structured warnings rather than aborting the whole query; warnings are shown with `--events` for detail queries.
 
+## Custom-resource enrichment
+
+Only a named custom target with positive traversal depth is enriched, before concurrent traversal starts. Its requested GVR identifies the exact CRD (`plural.group`), fetched through the existing GET cache. The matching version's schema is summarized with bounded traversal. Explicit API-version/kind/name references are deduplicated and capped at eight, with at most one additional discovery call and bounded parallel GETs. Referenced objects are graph leaves rather than recursively expanded custom references. Built-in detail paths and list commands do not perform these enrichment reads. Failures are preserved as visible warnings for custom targets, independently of Event collection.
+
 ## Events
 
 Detail Events are opt-in with `--events`. They are listed with an involved-object UID field selector first; if that selector is rejected, lookup falls back to kind/name/namespace. Results are filtered by `--since`, deduplicated by involved-object identity/reason/message, sorted newest-first, and capped by `--max-events`. `kq event` is a separate Event list command.

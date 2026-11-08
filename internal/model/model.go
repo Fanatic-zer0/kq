@@ -27,6 +27,8 @@ const (
 	RelationDisruptionBudget RelationType = "disruption-budget"
 	RelationIngress          RelationType = "ingress"
 	RelationNetworkPolicy    RelationType = "network-policy"
+	RelationDefinition       RelationType = "definition"
+	RelationReference        RelationType = "reference"
 )
 
 type ResourceNode struct {

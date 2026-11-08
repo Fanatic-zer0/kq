@@ -43,6 +43,10 @@ Built-in resource names and aliases are available directly. A discovered custom 
 
 Custom-resource detail output includes metadata plus bounded top-level `config`, `spec`, and `status` fields rendered as nested YAML. Sensitive-looking fields are redacted, nesting and value lengths are capped, and output is limited to 100 fields. JSON/YAML detail output includes these sanitized fields in the resource projection.
 
+Named custom-resource detail queries enrich these results by default when `--depth` is positive: one exact CRD lookup links the definition and provides a `SCHEMA` summary of up to 100 field paths, types, and descriptions for the queried API version. Existing owner traversal is retained. Structured references containing `apiVersion`, `kind`, and `name` are resolved from `config`, `spec`, and `status`; an explicit namespace is honored, otherwise namespaced references use the target namespace. Arbitrary strings and operator-specific name-only references are not guessed.
+
+Reference scanning is limited to 512 entries, five nesting levels, and eight unique references. Repeated references are deduplicated and fetched with bounded workers; unknown reference kinds reuse one discovery result. Custom-resource lists are not enriched and no instance lists are scanned for this feature. Secret references remain metadata-only unless `--show-secret-keys` is enabled; values are never printed. `--exclude` can skip referenced kinds or the CRD lookup, and `--depth 0` skips enrichment. Lookup failures and possible reference-limit omissions are shown without `--events` for custom-resource detail queries; Events themselves remain opt-in.
+
 PV and PVC list views include a `USED BY` column. PVC usage is matched by namespace and claim name; PV usage is resolved through its bound PVC. Detail views show the bound PV/PVC and consuming Pods. These relationships come from Pod volume specs, so `USED BY` means a Pod declares the claim; it does not prove that the Pod successfully mounted the volume. PV usage needs permission to list Pods across namespaces. If access is denied, the list displays `unavailable` and table output includes a warning.
 
 ## Flags
@@ -53,8 +57,8 @@ PV and PVC list views include a `USED BY` column. PVC usage is matched by namesp
 - `-A, --all-namespaces` — list across all namespaces (list view only; rejected for detail queries and cluster-scoped resources).
 - `--since` — Event lookback window; default `30m`.
 - `--max-events` — maximum Events collected for a detail query; default `200`.
-- `--events` — opt in to Events and resolver warning output for detail views; off by default.
-- `--no-events` — disable Events and warnings, overriding `--events`.
+- `--events` — opt in to Events and resolver warning output for built-in detail views; off by default. Custom-resource lookup warnings are visible by default.
+- `--no-events` — disable Events and built-in detail warnings, overriding `--events`; custom-resource lookup warnings remain visible.
 - `--depth` — association traversal depth for detail views; default `5`.
 - `-o, --output` — `table` (default), `wide` (Pod list only; adds NODE/POD IP/QOS/CONFIG/SECRET/STORAGE/SA/EVENTS columns), `json`, or `yaml`. JSON/YAML detail output contains the relationship graph; custom-resource fields are included in sanitized nested form.
 - `--tree` — render a detail view as an ownership/association tree instead of the curated text sections.
