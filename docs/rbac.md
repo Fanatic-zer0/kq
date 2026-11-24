@@ -48,6 +48,8 @@ Default custom-resource detail enrichment also needs `get` access to the corresp
 
 PVC/PV `USED BY` results require `list` access to Pods. A namespaced PVC query/list needs Pod access in that namespace; `pvc -A` and PV queries/lists inspect Pods across namespaces. Without access, the resource still loads, but consumer lookup is unavailable: list tables show `unavailable` and a warning, while detail resolver warnings are displayed with `--events`. Do not treat an empty detail consumer list as definitive when Pod-list access is restricted. The ClusterRole above grants cluster-wide Pod list access; a namespace-scoped Role can be used for PVC-only workflows.
 
+Cross-namespace Ingress annotations that explicitly reference a Secret as `namespace/name` require cluster-wide `list` access to Ingresses. Standard Ingress TLS `spec.tls[].secretName` references remain namespace-local.
+
 ## Optional Secret key-name access
 
 Secret reads are disabled unless `--show-secret-keys` is supplied. For a namespaced application, grant `get` only on specifically approved Secret names:

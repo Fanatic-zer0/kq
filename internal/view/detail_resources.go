@@ -424,7 +424,7 @@ func renderUsedBySection(w io.Writer, result *model.QueryResult, target model.Re
 			continue
 		}
 		user, ok := nodeByUID(result.Graph, edge.FromUID)
-		if !ok || user.Ref.Kind != "Pod" {
+		if !ok {
 			continue
 		}
 		users[user.Ref.UID] = user
@@ -450,13 +450,19 @@ func renderUsedBySection(w io.Writer, result *model.QueryResult, target model.Re
 		return ordered[i].Ref.Name < ordered[j].Ref.Name
 	})
 	for _, user := range ordered {
-		fmt.Fprintf(w, "Pod/%s/%s\n", user.Ref.Namespace, user.Ref.Name)
+		identity := user.Ref.Kind + "/" + user.Ref.Name
+		if user.Ref.Namespace != "" {
+			identity = user.Ref.Kind + "/" + user.Ref.Namespace + "/" + user.Ref.Name
+		}
+		fmt.Fprintln(w, identity)
 		for _, location := range sortedKeys(locations[user.Ref.UID]) {
 			fmt.Fprintf(w, "  ├── %s\n", location)
 		}
-		chain := ownerChain(result.Graph, user)
-		if len(chain) > 1 && chain[0].Ref.Kind != "Pod" {
-			fmt.Fprintf(w, "  └── %s/%s\n", chain[0].Ref.Kind, chain[0].Ref.Name)
+		if user.Ref.Kind == "Pod" {
+			chain := ownerChain(result.Graph, user)
+			if len(chain) > 1 && chain[0].Ref.Kind != "Pod" {
+				fmt.Fprintf(w, "  └── %s/%s\n", chain[0].Ref.Kind, chain[0].Ref.Name)
+			}
 		}
 	}
 }

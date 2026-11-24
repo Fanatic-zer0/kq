@@ -3,6 +3,8 @@ package query
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 
 	"github.com/Fanatic-zer0/kq/internal/graph"
@@ -13,39 +15,375 @@ import (
 )
 
 func (e *Engine) resolveConfigOrSecretTarget(ctx context.Context, target *unstructured.Unstructured, builder *graph.Builder, request Request) []model.QueryWarning {
-	if isExcluded(request.ExcludedKinds, "Pod") {
-		return nil
-	}
-	resource := schema.GroupVersionResource{Version: "v1", Resource: "pods"}
-	pods, err := e.listAll(ctx, resource, target.GetNamespace(), metav1.ListOptions{Limit: 500})
-	if err != nil {
-		return []model.QueryWarning{warningFor(target, "list referencing Pods", err)}
-	}
 	targetRef := reference(target)
 	var warnings []model.QueryWarning
 	var referencingPods []*unstructured.Unstructured
-	for i := range pods {
-		pod := &pods[i]
-		locations := podReferenceLocations(pod, target.GetKind(), target.GetName(), request.ShowSecretKeys)
-		if len(locations) == 0 {
+	if !isExcluded(request.ExcludedKinds, "Pod") {
+		resource := schema.GroupVersionResource{Version: "v1", Resource: "pods"}
+		pods, err := e.listAll(ctx, resource, target.GetNamespace(), metav1.ListOptions{Limit: 500})
+		if err != nil {
+			warnings = append(warnings, warningFor(target, "list referencing Pods", err))
+		} else {
+			for i := range pods {
+				pod := &pods[i]
+				locations := podReferenceLocations(pod, target.GetKind(), target.GetName(), request.ShowSecretKeys)
+				locations = append(locations, annotationReferenceLocations(pod, target)...)
+				if len(locations) == 0 {
+					continue
+				}
+				podNode := project(pod, "Pod", "v1", request.ShowSecretKeys)
+				builder.AddNode(podNode)
+				for _, location := range locations {
+					builder.AddEdge(model.Edge{
+						FromUID: podNode.Ref.UID, ToUID: targetRef.UID,
+						From: refPointer(podNode.Ref), To: refPointer(targetRef), Type: relationFor(target.GetKind()), Detail: location,
+					})
+				}
+				referencingPods = append(referencingPods, pod)
+			}
+		}
+	}
+	for _, workloadType := range workloadTemplateTypes {
+		if isExcluded(request.ExcludedKinds, workloadType.kind) {
 			continue
 		}
-		podNode := project(pod, "Pod", "v1", request.ShowSecretKeys)
-		builder.AddNode(podNode)
-		for _, location := range locations {
-			relation := model.RelationConfig
-			if target.GetKind() == "Secret" {
-				relation = model.RelationSecret
-			}
-			builder.AddEdge(model.Edge{
-				FromUID: podNode.Ref.UID, ToUID: targetRef.UID,
-				From: refPointer(podNode.Ref), To: refPointer(targetRef), Type: relation, Detail: location,
-			})
+		workloads, err := e.listAll(ctx, workloadType.resource, target.GetNamespace(), metav1.ListOptions{Limit: 500})
+		if err != nil {
+			warnings = append(warnings, warningFor(target, "list referencing "+workloadType.kind+" resources", err))
+			continue
 		}
-		referencingPods = append(referencingPods, pod)
+		for i := range workloads {
+			workload := &workloads[i]
+			spec, found, _ := unstructured.NestedMap(workload.Object, workloadType.templatePath...)
+			if !found {
+				continue
+			}
+			templatePath := workloadType.templatePath[:len(workloadType.templatePath)-1]
+			templateMetadataPath := append(append([]string(nil), templatePath...), "metadata")
+			templateMetadata, _, _ := unstructured.NestedMap(workload.Object, templateMetadataPath...)
+			metadata := map[string]any{"name": workload.GetName(), "namespace": workload.GetNamespace()}
+			if annotations, ok := templateMetadata["annotations"].(map[string]any); ok {
+				metadata["annotations"] = annotations
+			}
+			pod := &unstructured.Unstructured{Object: map[string]any{
+				"apiVersion": "v1",
+				"kind":       "Pod",
+				"metadata":   metadata,
+				"spec":       spec,
+			}}
+			locations := podReferenceLocations(pod, target.GetKind(), target.GetName(), request.ShowSecretKeys)
+			locations = append(locations, annotationReferenceLocations(pod, target)...)
+			for _, location := range annotationReferenceLocations(workload, target) {
+				locations = append(locations, "workload."+location)
+			}
+			if len(locations) == 0 {
+				continue
+			}
+			workloadNode := project(workload, workloadType.kind, workload.GetAPIVersion(), request.ShowSecretKeys)
+			builder.AddNode(workloadNode)
+			for _, location := range locations {
+				fullLocation := strings.Join(workloadType.templatePath, ".") + "." + strings.TrimPrefix(location, "spec.")
+				if strings.HasPrefix(location, "metadata.") {
+					fullLocation = strings.Join(templatePath, ".") + "." + location
+				}
+				if strings.HasPrefix(location, "workload.metadata.") {
+					fullLocation = strings.TrimPrefix(location, "workload.")
+				}
+				builder.AddEdge(model.Edge{
+					FromUID: workloadNode.Ref.UID, ToUID: targetRef.UID,
+					From: refPointer(workloadNode.Ref), To: refPointer(targetRef), Type: relationFor(target.GetKind()), Detail: fullLocation,
+				})
+			}
+		}
 	}
+	warnings = append(warnings, e.resolveNativeConfigOrSecretReferences(ctx, target, targetRef, builder, request)...)
+	warnings = append(warnings, e.resolveCustomConfigOrSecretReferences(ctx, target, targetRef, builder, request)...)
 	warnings = append(warnings, e.addOwnerChainsForPods(ctx, referencingPods, builder, request)...)
 	return warnings
+}
+
+func (e *Engine) resolveNativeConfigOrSecretReferences(ctx context.Context, target *unstructured.Unstructured, targetRef model.ResourceRef, builder *graph.Builder, request Request) []model.QueryWarning {
+	var warnings []model.QueryWarning
+	sources := []struct {
+		kind     string
+		resource schema.GroupVersionResource
+	}{
+		{kind: "Ingress", resource: schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"}},
+		{kind: "ServiceAccount", resource: schema.GroupVersionResource{Version: "v1", Resource: "serviceaccounts"}},
+	}
+	for _, source := range sources {
+		if isExcluded(request.ExcludedKinds, source.kind) {
+			continue
+		}
+		namespace := target.GetNamespace()
+		if source.kind == "Ingress" && target.GetKind() == "Secret" {
+			namespace = ""
+		}
+		items, err := e.listAll(ctx, source.resource, namespace, metav1.ListOptions{Limit: 500})
+		if err != nil {
+			warnings = append(warnings, warningFor(target, "list referencing "+source.kind+" resources", err))
+			continue
+		}
+		for i := range items {
+			object := &items[i]
+			var locations []string
+			locations = append(locations, annotationReferenceLocations(object, target)...)
+			if target.GetKind() == "Secret" && source.kind == "Ingress" {
+				if object.GetNamespace() == target.GetNamespace() {
+					for index, tls := range nestedSlice(object.Object, "spec", "tls") {
+						entry, ok := tls.(map[string]any)
+						if ok && stringValue(entry["secretName"]) == target.GetName() {
+							locations = append(locations, fmt.Sprintf("spec.tls[%d].secretName", index))
+						}
+					}
+				}
+			}
+			if target.GetKind() == "Secret" && source.kind == "ServiceAccount" {
+				for index, secret := range nestedSlice(object.Object, "imagePullSecrets") {
+					entry, ok := secret.(map[string]any)
+					if ok && stringValue(entry["name"]) == target.GetName() {
+						locations = append(locations, fmt.Sprintf("imagePullSecrets[%d].name", index))
+					}
+				}
+				for index, secret := range nestedSlice(object.Object, "secrets") {
+					entry, ok := secret.(map[string]any)
+					if ok && stringValue(entry["name"]) == target.GetName() {
+						locations = append(locations, fmt.Sprintf("secrets[%d].name", index))
+					}
+				}
+			}
+			if len(locations) == 0 {
+				continue
+			}
+			node := project(object, source.kind, object.GetAPIVersion(), request.ShowSecretKeys)
+			builder.AddNode(node)
+			for _, location := range locations {
+				builder.AddEdge(model.Edge{
+					FromUID: node.Ref.UID, ToUID: targetRef.UID,
+					From: refPointer(node.Ref), To: refPointer(targetRef), Type: relationFor(target.GetKind()), Detail: location,
+				})
+			}
+		}
+	}
+	return warnings
+}
+
+func (e *Engine) resolveCustomConfigOrSecretReferences(ctx context.Context, target *unstructured.Unstructured, targetRef model.ResourceRef, builder *graph.Builder, request Request) []model.QueryWarning {
+	if isExcluded(request.ExcludedKinds, "CustomResourceDefinition") {
+		return nil
+	}
+	crds, err := e.listAll(ctx, schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}, "", metav1.ListOptions{Limit: 500})
+	if err != nil {
+		return []model.QueryWarning{warningFor(target, "list custom resource definitions for reverse reference lookup", err)}
+	}
+	type customResourceType struct {
+		kind      string
+		resource  schema.GroupVersionResource
+		namespace string
+	}
+	var resourceTypes []customResourceType
+	for i := range crds {
+		crd := &crds[i]
+		scope := nestedString(crd.Object, "spec", "scope")
+		if scope != "Namespaced" && scope != "Cluster" {
+			continue
+		}
+		group := nestedString(crd.Object, "spec", "group")
+		plural := nestedString(crd.Object, "spec", "names", "plural")
+		kind := nestedString(crd.Object, "spec", "names", "kind")
+		if group == "" || plural == "" || kind == "" || isExcluded(request.ExcludedKinds, kind) {
+			continue
+		}
+		for _, value := range nestedSlice(crd.Object, "spec", "versions") {
+			version, ok := value.(map[string]any)
+			if !ok || version["served"] != true || stringValue(version["name"]) == "" {
+				continue
+			}
+			resourceTypes = append(resourceTypes, customResourceType{
+				kind: kind, namespace: target.GetNamespace(),
+				resource: schema.GroupVersionResource{Group: group, Version: stringValue(version["name"]), Resource: plural},
+			})
+			if scope == "Cluster" {
+				resourceTypes[len(resourceTypes)-1].namespace = ""
+			}
+			break
+		}
+	}
+	sort.Slice(resourceTypes, func(i, j int) bool {
+		return resourceTypes[i].resource.String() < resourceTypes[j].resource.String()
+	})
+	const maxCustomResourceTypes = 32
+	var warnings []model.QueryWarning
+	if len(resourceTypes) > maxCustomResourceTypes {
+		warnings = append(warnings, model.QueryWarning{
+			Resource: targetRef, Operation: "custom resource reverse reference limit",
+			Message: fmt.Sprintf("Only the first %d namespaced custom resource types are scanned; %d types were omitted.", maxCustomResourceTypes, len(resourceTypes)-maxCustomResourceTypes),
+		})
+		resourceTypes = resourceTypes[:maxCustomResourceTypes]
+	}
+	for _, resourceType := range resourceTypes {
+		list, err := e.client.List(ctx, resourceType.resource, resourceType.namespace, metav1.ListOptions{Limit: 500})
+		if err != nil {
+			warnings = append(warnings, warningFor(target, "list referencing custom resources of kind "+resourceType.kind, err))
+			continue
+		}
+		if list.GetContinue() != "" {
+			warnings = append(warnings, model.QueryWarning{
+				Resource: targetRef, Operation: "custom resource reverse reference limit",
+				Message: fmt.Sprintf("The scan of %s is limited to the first 500 objects.", resourceType.kind),
+			})
+		}
+		for i := range list.Items {
+			object := &list.Items[i]
+			locations := customResourceReferenceLocations(object, target)
+			if len(locations) == 0 {
+				continue
+			}
+			node := project(object, resourceType.kind, object.GetAPIVersion(), request.ShowSecretKeys)
+			builder.AddNode(node)
+			for _, location := range locations {
+				builder.AddEdge(model.Edge{
+					FromUID: node.Ref.UID, ToUID: targetRef.UID,
+					From: refPointer(node.Ref), To: refPointer(targetRef), Type: relationFor(target.GetKind()), Detail: location,
+				})
+			}
+		}
+	}
+	return warnings
+}
+
+type workloadTemplateType struct {
+	kind         string
+	resource     schema.GroupVersionResource
+	templatePath []string
+}
+
+var workloadTemplateTypes = []workloadTemplateType{
+	{kind: "Deployment", resource: schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}, templatePath: []string{"spec", "template", "spec"}},
+	{kind: "ReplicaSet", resource: schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "replicasets"}, templatePath: []string{"spec", "template", "spec"}},
+	{kind: "StatefulSet", resource: schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "statefulsets"}, templatePath: []string{"spec", "template", "spec"}},
+	{kind: "DaemonSet", resource: schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "daemonsets"}, templatePath: []string{"spec", "template", "spec"}},
+	{kind: "Job", resource: schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "jobs"}, templatePath: []string{"spec", "template", "spec"}},
+	{kind: "CronJob", resource: schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "cronjobs"}, templatePath: []string{"spec", "jobTemplate", "spec", "template", "spec"}},
+}
+
+func relationFor(kind string) model.RelationType {
+	if kind == "Secret" {
+		return model.RelationSecret
+	}
+	return model.RelationConfig
+}
+
+func annotationReferenceLocations(object *unstructured.Unstructured, target *unstructured.Unstructured) []string {
+	annotations, _, _ := unstructured.NestedStringMap(object.Object, "metadata", "annotations")
+	keys := make([]string, 0, len(annotations))
+	for key := range annotations {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var locations []string
+	for _, key := range keys {
+		value := strings.TrimSpace(annotations[key])
+		matchesName := object.GetNamespace() == target.GetNamespace() && value == target.GetName()
+		matchesQualifiedName := target.GetNamespace() != "" && value == target.GetNamespace()+"/"+target.GetName()
+		if !referenceFieldMatchesKind(key, target.GetKind()) || (!matchesName && !matchesQualifiedName) {
+			continue
+		}
+		locations = append(locations, fmt.Sprintf("metadata.annotations[%s]", key))
+	}
+	return locations
+}
+
+func customResourceReferenceLocations(object, target *unstructured.Unstructured) []string {
+	var locations []string
+	seen := make(map[string]bool)
+	budget := 512
+	for _, field := range []string{"config", "spec", "status"} {
+		collectMatchingCustomReferences(object.Object[field], field, object.GetNamespace(), target, false, 0, &budget, seen, &locations)
+	}
+	for _, location := range annotationReferenceLocations(object, target) {
+		appendUniqueLocation(location, seen, &locations)
+	}
+	sort.Strings(locations)
+	return locations
+}
+
+func collectMatchingCustomReferences(value any, path, namespace string, target *unstructured.Unstructured, kindHint bool, depth int, budget *int, seen map[string]bool, locations *[]string) {
+	if depth > 5 || *budget <= 0 || len(*locations) >= 8 {
+		return
+	}
+	*budget--
+	switch typed := value.(type) {
+	case map[string]any:
+		kind := stringValue(typed["kind"])
+		name := stringValue(typed["name"])
+		refNamespace := stringValue(typed["namespace"])
+		apiVersion := stringValue(typed["apiVersion"])
+		if refNamespace == "" {
+			refNamespace = namespace
+		}
+		if name != "" && refNamespace == target.GetNamespace() && referenceValueMatches(name, target.GetNamespace(), target.GetName()) {
+			kindMatches := strings.EqualFold(kind, target.GetKind())
+			if apiVersion != "" && apiVersion != target.GetAPIVersion() {
+				kindMatches = false
+			}
+			if kindMatches || (kind == "" && kindHint) {
+				appendUniqueLocation(path, seen, locations)
+			}
+		}
+		keys := make([]string, 0, len(typed))
+		for key := range typed {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			if *budget <= 0 || len(*locations) >= 8 {
+				continue
+			}
+			childPath := key
+			if path != "" {
+				childPath = path + "." + key
+			}
+			childHint := kindHint || referenceFieldMatchesKind(key, target.GetKind())
+			if scalar, ok := typed[key].(string); ok && childHint && referenceValueMatches(scalar, target.GetNamespace(), target.GetName()) {
+				appendUniqueLocation(childPath, seen, locations)
+				continue
+			}
+			collectMatchingCustomReferences(typed[key], childPath, namespace, target, childHint, depth+1, budget, seen, locations)
+		}
+	case []any:
+		for index, item := range typed {
+			if *budget <= 0 || len(*locations) >= 8 {
+				break
+			}
+			collectMatchingCustomReferences(item, fmt.Sprintf("%s[%d]", path, index), namespace, target, kindHint, depth+1, budget, seen, locations)
+		}
+	}
+}
+
+func referenceFieldMatchesKind(field, kind string) bool {
+	normalizedField := strings.ToLower(strings.NewReplacer("-", "", "_", "", ".", "").Replace(field))
+	switch strings.ToLower(kind) {
+	case "secret":
+		return strings.Contains(normalizedField, "secret")
+	case "configmap":
+		return strings.Contains(normalizedField, "configmap")
+	default:
+		return false
+	}
+}
+
+func referenceValueMatches(value, namespace, name string) bool {
+	value = strings.TrimSpace(value)
+	return value == name || (namespace != "" && value == namespace+"/"+name)
+}
+
+func appendUniqueLocation(location string, seen map[string]bool, locations *[]string) {
+	if location == "" || seen[location] {
+		return
+	}
+	seen[location] = true
+	*locations = append(*locations, location)
 }
 
 func (e *Engine) resolvePVCUsers(ctx context.Context, claim *unstructured.Unstructured, builder *graph.Builder, request Request) []model.QueryWarning {
