@@ -391,6 +391,28 @@ func TestConfigMapDetailShowsUsageLocationAndOwner(t *testing.T) {
 	}
 }
 
+func TestConfigMapDetailShowsWorkloadTemplateUse(t *testing.T) {
+	configMap := model.ResourceNode{Ref: model.ResourceRef{APIVersion: "v1", Kind: "ConfigMap", Namespace: "payments", Name: "app-config", UID: "cm-uid"}}
+	deployment := model.ResourceNode{Ref: model.ResourceRef{APIVersion: "apps/v1", Kind: "Deployment", Namespace: "payments", Name: "api", UID: "deployment-uid"}}
+	result := &model.QueryResult{
+		Target: configMap.Ref,
+		Graph: model.Graph{
+			Target: configMap.Ref,
+			Nodes:  []model.ResourceNode{configMap, deployment},
+			Edges:  []model.Edge{{FromUID: "deployment-uid", ToUID: "cm-uid", Type: model.RelationConfig, Detail: "spec.template.spec.containers[0](api).envFrom[0].configMapRef"}},
+		},
+	}
+	var out bytes.Buffer
+	if err := RenderDetail(&out, result, "table", DetailOptions{}); err != nil {
+		t.Fatalf("RenderDetail: %v", err)
+	}
+	for _, expected := range []string{"USED BY", "Deployment/payments/api", "spec.template.spec.containers[0](api).envFrom[0].configMapRef"} {
+		if !strings.Contains(out.String(), expected) {
+			t.Errorf("ConfigMap detail missing %q:\n%s", expected, out.String())
+		}
+	}
+}
+
 func TestTableFlushAlignsColumnsWhenColorized(t *testing.T) {
 	colorEnabled = true
 	defer func() { colorEnabled = false }()
